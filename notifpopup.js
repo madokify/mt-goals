@@ -1,4 +1,4 @@
-
+// hi
 (function () {
   const NOTIF_SCHEDULE_KEY = 'monkeytype_goals_notif_schedule';
 
