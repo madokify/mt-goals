@@ -84,7 +84,6 @@
       gap: 12px;
     }
 
-    /* Row that holds the add button + export/import icons */
     .add-row {
       display: flex;
       align-items: center;
@@ -109,13 +108,12 @@
       color: rgba(255,255,255,0.7);
     }
 
-    /* Export / Import icon buttons */
     .icon-action-btn {
       background-color: #2b2d31;
       border: none;
       border-radius: 8px;
       padding: 0 12px;
-      height: 48px; /* matches add-btn height */
+      height: 48px;
       display: flex;
       align-items: center;
       justify-content: center;
@@ -132,6 +130,38 @@
       width: 20px;
       height: 20px;
       display: block;
+    }
+
+    #notifBtn {
+      background-color: #2b2d31;
+      border: none;
+      border-radius: 8px;
+      padding: 0 12px;
+      height: 48px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      opacity: 0.55;
+      transition: background 0.2s, opacity 0.2s;
+      flex-shrink: 0;
+    }
+    #notifBtn:hover {
+      background-color: #35373d;
+      opacity: 1;
+    }
+    #notifBtn svg {
+      width: 20px;
+      height: 20px;
+      display: block;
+      transition: fill 0.25s;
+    }
+    #notifBtn.active {
+      opacity: 1;
+    }
+    #notifBtn.active svg path {
+      fill: rgba(255,255,255,0.9);
+      stroke: rgba(255,255,255,0.9);
     }
 
     .goal-input-row {
@@ -177,13 +207,16 @@
     .word-counter {
       font-size: 0.72rem;
       white-space: nowrap;
-      transition: color 0.2s;
+      transition: color 0.2s, opacity 0.35s;
+      opacity: 1;
     }
     .word-counter.under {
       color: #e2b714;
+      opacity: 1;
     }
     .word-counter.met {
-      color: rgba(255,255,255,0.5);
+      opacity: 0;
+      pointer-events: none;
     }
 
     .pin-btn, .cancel-btn {
@@ -410,7 +443,6 @@
 .edit-btn:hover { opacity: 1; }
 .edit-btn svg { width: 18px; height: 18px; display: block; }
 
-/* Override confirm modal */
 .modal-overlay {
   position: fixed;
   inset: 0;
@@ -517,6 +549,12 @@
       </svg>
     </button>
 
+    <button class="icon-action-btn" id="notifBtn" title="Set goal reminders">
+      <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <path d="M9.00195 17H5.60636C4.34793 17 3.71872 17 3.58633 16.9023C3.4376 16.7925 3.40126 16.7277 3.38515 16.5436C3.37082 16.3797 3.75646 15.7486 4.52776 14.4866C5.32411 13.1835 6.00031 11.2862 6.00031 8.6C6.00031 7.11479 6.63245 5.69041 7.75766 4.6402C8.88288 3.59 10.409 3 12.0003 3C13.5916 3 15.1177 3.59 16.2429 4.6402C17.3682 5.69041 18.0003 7.11479 18.0003 8.6C18.0003 11.2862 18.6765 13.1835 19.4729 14.4866C20.2441 15.7486 20.6298 16.3797 20.6155 16.5436C20.5994 16.7277 20.563 16.7925 20.4143 16.9023C20.2819 17 19.6527 17 18.3943 17H15.0003M9.00195 17L9.00031 18C9.00031 19.6569 10.3435 21 12.0003 21C13.6572 21 15.0003 19.6569 15.0003 18V17M9.00195 17H15.0003" stroke="#ffffff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></path>
+      </svg>
+    </button>
+
     <input type="file" id="importFileInput" accept=".json" style="display:none;">
   </div>
 </div>
@@ -556,11 +594,16 @@
 
 <script src="/dload.js"></script>
 <script src="/mt-stats-widget.js"></script>
+<script src="/notifpopup.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.9.2/dist/confetti.browser.min.js"></script>
 
 <script>
-const STORAGE_KEY = 'monkeytype_goals';
-const THEME_KEY   = 'monkeytype_goals_theme';
+const STORAGE_KEY   = 'monkeytype_goals';
+const THEME_KEY     = 'monkeytype_goals_theme';
+const NOTIF_KEY     = 'monkeytype_goals_notif_schedule';
+const NOTIF_GRANTED = 'monkeytype_goals_notif_granted';
+const NOTIF_NEXT    = 'monkeytype_goals_notif_next';
+
 const container   = document.getElementById('goalsContainer');
 const addRow      = document.getElementById('addRow');
 const addBtn      = document.getElementById('addBtn');
@@ -572,18 +615,15 @@ const themeLabel      = document.getElementById('themeLabel');
 const themeStylesheet = document.getElementById('theme-stylesheet');
 const defaultStyle    = document.getElementById('default-style');
 const headerLogo      = document.getElementById('header-logo');
-const exportBtn = document.getElementById('exportBtn');
-const importBtn = document.getElementById('importBtn');
+const exportBtn       = document.getElementById('exportBtn');
+const importBtn       = document.getElementById('importBtn');
+const notifBtn        = document.getElementById('notifBtn');
 
 let isDiscord = localStorage.getItem(THEME_KEY) === 'discord';
 
 function applyTheme(discord) {
   let favicon = document.querySelector("link[rel~='icon']");
-  if (!favicon) {
-    favicon = document.createElement('link');
-    favicon.rel = 'icon';
-    document.head.appendChild(favicon);
-  }
+  if (!favicon) { favicon = document.createElement('link'); favicon.rel = 'icon'; document.head.appendChild(favicon); }
   if (discord) {
     themeStylesheet.href = '/themes/discord.css';
     defaultStyle.disabled = true;
@@ -606,34 +646,20 @@ themeBtn.addEventListener('click', () => {
   localStorage.setItem(THEME_KEY, isDiscord ? 'discord' : 'default');
   const overlay = document.createElement('div');
   Object.assign(overlay.style, {
-    position: 'fixed',
-    top: '0',
-    left: '0',
-    width: '100vw',
-    height: '100vh',
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: '#313338',
-    zIndex: '999999',
-    opacity: '1',
-    transition: 'opacity 0.8s ease-out',
+    position: 'fixed', top: '0', left: '0', width: '100vw', height: '100vh',
+    display: 'flex', alignItems: 'center', justifyContent: 'center',
+    backgroundColor: '#313338', zIndex: '999999', opacity: '1', transition: 'opacity 0.8s ease-out',
   });
   const text = document.createElement('span');
   text.textContent = 'Loading Data...';
   Object.assign(text.style, {
-    fontFamily: "'Roboto Mono', monospace",
-    fontSize: '1.4rem',
-    fontWeight: '500',
+    fontFamily: "'Roboto Mono', monospace", fontSize: '1.4rem', fontWeight: '500',
     color: isDiscord ? '#5974ea' : '#e2b714',
   });
   overlay.appendChild(text);
   document.body.appendChild(overlay);
   applyTheme(isDiscord);
-  setTimeout(() => {
-    overlay.style.opacity = '0';
-    overlay.addEventListener('transitionend', () => overlay.remove());
-  }, 500);
+  setTimeout(() => { overlay.style.opacity = '0'; overlay.addEventListener('transitionend', () => overlay.remove()); }, 500);
 });
 
 function loadGoals() {
@@ -651,34 +677,22 @@ function updateDragHandles() {
   cards.forEach(card => {
     const handle = card.querySelector('.drag-handle');
     if (handle) {
-      if (show) {
-        handle.classList.remove('hidden');
-      } else {
-        handle.classList.add('hidden');
-      }
+      if (show) handle.classList.remove('hidden');
+      else handle.classList.add('hidden');
     }
   });
 }
 
-let dragSrc = null;
-let dragId  = null;
-let indicator = null;
+let dragSrc = null, dragId = null, indicator = null;
 
-function getCards() {
-  return [...container.querySelectorAll('.goal-card')];
-}
-
-function removeIndicator() {
-  if (indicator) { indicator.remove(); indicator = null; }
-}
-
+function getCards() { return [...container.querySelectorAll('.goal-card')]; }
+function removeIndicator() { if (indicator) { indicator.remove(); indicator = null; } }
 function insertIndicatorBefore(el) {
   removeIndicator();
   indicator = document.createElement('div');
   indicator.className = 'drop-indicator';
   container.insertBefore(indicator, el);
 }
-
 function insertIndicatorAfter(el) {
   removeIndicator();
   indicator = document.createElement('div');
@@ -688,71 +702,47 @@ function insertIndicatorAfter(el) {
 
 function onHandleMouseDown(e, card, id) {
   e.preventDefault();
-  dragSrc = card;
-  dragId  = id;
+  dragSrc = card; dragId = id;
   card.classList.add('dragging');
-
   function onMouseMove(ev) {
     const cards = getCards().filter(c => c !== dragSrc);
     removeIndicator();
-
     let placed = false;
     for (const c of cards) {
       const rect = c.getBoundingClientRect();
-      const mid  = rect.top + rect.height / 2;
-      if (ev.clientY < mid) {
-        insertIndicatorBefore(c);
-        placed = true;
-        break;
-      }
+      if (ev.clientY < rect.top + rect.height / 2) { insertIndicatorBefore(c); placed = true; break; }
     }
-    if (!placed && cards.length > 0) {
-      insertIndicatorAfter(cards[cards.length - 1]);
-    }
+    if (!placed && cards.length > 0) insertIndicatorAfter(cards[cards.length - 1]);
   }
-
   function onMouseUp() {
     document.removeEventListener('mousemove', onMouseMove);
     document.removeEventListener('mouseup', onMouseUp);
     finishDrag();
   }
-
   document.addEventListener('mousemove', onMouseMove);
   document.addEventListener('mouseup', onMouseUp);
 }
 
 function onHandleTouchStart(e, card, id) {
-  dragSrc = card;
-  dragId  = id;
+  dragSrc = card; dragId = id;
   card.classList.add('dragging');
-
   function onTouchMove(ev) {
     ev.preventDefault();
     const touch = ev.touches[0];
     const cards = getCards().filter(c => c !== dragSrc);
     removeIndicator();
-
     let placed = false;
     for (const c of cards) {
       const rect = c.getBoundingClientRect();
-      const mid  = rect.top + rect.height / 2;
-      if (touch.clientY < mid) {
-        insertIndicatorBefore(c);
-        placed = true;
-        break;
-      }
+      if (touch.clientY < rect.top + rect.height / 2) { insertIndicatorBefore(c); placed = true; break; }
     }
-    if (!placed && cards.length > 0) {
-      insertIndicatorAfter(cards[cards.length - 1]);
-    }
+    if (!placed && cards.length > 0) insertIndicatorAfter(cards[cards.length - 1]);
   }
-
   function onTouchEnd() {
     card.removeEventListener('touchmove', onTouchMove);
     card.removeEventListener('touchend', onTouchEnd);
     finishDrag();
   }
-
   card.addEventListener('touchmove', onTouchMove, { passive: false });
   card.addEventListener('touchend', onTouchEnd);
 }
@@ -760,20 +750,12 @@ function onHandleTouchStart(e, card, id) {
 function finishDrag() {
   if (!dragSrc) return;
   dragSrc.classList.remove('dragging');
-
-  if (indicator) {
-    container.insertBefore(dragSrc, indicator);
-    removeIndicator();
-  }
-
-  dragSrc = null;
-  dragId  = null;
-
+  if (indicator) { container.insertBefore(dragSrc, indicator); removeIndicator(); }
+  dragSrc = null; dragId = null;
   const newOrder = getCards().map(c => c.dataset.id);
   const goals = loadGoals();
   const map = Object.fromEntries(goals.map(g => [g.id, g]));
-  const reordered = newOrder.map(id => map[id]).filter(Boolean);
-  saveGoals(reordered);
+  saveGoals(newOrder.map(id => map[id]).filter(Boolean));
 }
 
 function renderGoal(text, id) {
@@ -788,28 +770,22 @@ function renderGoal(text, id) {
   const actions = document.createElement('div');
   actions.className = 'goal-card-actions';
 
-const editBtn = document.createElement('button');
-editBtn.className = 'edit-btn';
-editBtn.title = 'Edit goal';
-editBtn.innerHTML = `<svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path fill-rule="evenodd" clip-rule="evenodd" d="M8.56078 20.2501L20.5608 8.25011L15.7501 3.43945L3.75012 15.4395V20.2501H8.56078ZM15.7501 5.56077L18.4395 8.25011L16.5001 10.1895L13.8108 7.50013L15.7501 5.56077ZM12.7501 8.56079L15.4395 11.2501L7.93946 18.7501H5.25012L5.25012 16.0608L12.7501 8.56079Z" fill="#ffffff"></path></svg>`;
-editBtn.addEventListener('click', () => showEditRow(card, id, textEl.textContent));
+  const editBtn = document.createElement('button');
+  editBtn.className = 'edit-btn';
+  editBtn.title = 'Edit goal';
+  editBtn.innerHTML = `<svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path fill-rule="evenodd" clip-rule="evenodd" d="M8.56078 20.2501L20.5608 8.25011L15.7501 3.43945L3.75012 15.4395V20.2501H8.56078ZM15.7501 5.56077L18.4395 8.25011L16.5001 10.1895L13.8108 7.50013L15.7501 5.56077ZM12.7501 8.56079L15.4395 11.2501L7.93946 18.7501H5.25012L5.25012 16.0608L12.7501 8.56079Z" fill="#ffffff"></path></svg>`;
+  editBtn.addEventListener('click', () => showEditRow(card, id, textEl.textContent));
 
   const delBtn = document.createElement('button');
   delBtn.className = 'delete-btn';
   delBtn.title = 'Remove goal';
-  delBtn.innerHTML = `<svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-    <path fill-rule="evenodd" clip-rule="evenodd"
-      d="M21.5821 5.54289C21.9726 5.93342 21.9726 6.56658 21.5821 6.95711L10.2526 18.2867C9.86452 18.6747 9.23627 18.6775 8.84475 18.293L2.29929 11.8644C1.90527 11.4774 1.89956 10.8443 2.28655 10.4503C2.67354 10.0562 3.30668 10.0505 3.70071 10.4375L9.53911 16.1717L20.1679 5.54289C20.5584 5.15237 21.1916 5.15237 21.5821 5.54289Z"
-      fill="#ffffff"/>
-  </svg>`;
-
+  delBtn.innerHTML = `<svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path fill-rule="evenodd" clip-rule="evenodd" d="M21.5821 5.54289C21.9726 5.93342 21.9726 6.56658 21.5821 6.95711L10.2526 18.2867C9.86452 18.6747 9.23627 18.6775 8.84475 18.293L2.29929 11.8644C1.90527 11.4774 1.89956 10.8443 2.28655 10.4503C2.67354 10.0562 3.30668 10.0505 3.70071 10.4375L9.53911 16.1717L20.1679 5.54289C20.5584 5.15237 21.1916 5.15237 21.5821 5.54289Z" fill="#ffffff"/></svg>`;
   delBtn.addEventListener('click', () => {
     launchConfetti();
     card.classList.add('fading');
     card.addEventListener('animationend', () => {
       card.remove();
-      const goals = loadGoals().filter(g => g.id !== id);
-      saveGoals(goals);
+      saveGoals(loadGoals().filter(g => g.id !== id));
       updateDragHandles();
     });
   });
@@ -818,26 +794,33 @@ editBtn.addEventListener('click', () => showEditRow(card, id, textEl.textContent
   handle.className = 'drag-handle';
   handle.title = 'Drag to reorder';
   handle.innerHTML = `<span></span><span></span><span></span>`;
-
   handle.addEventListener('mousedown', e => onHandleMouseDown(e, card, id));
   handle.addEventListener('touchstart', e => onHandleTouchStart(e, card, id), { passive: true });
 
-actions.appendChild(editBtn);
-actions.appendChild(delBtn);
-
+  actions.appendChild(editBtn);
+  actions.appendChild(delBtn);
   card.appendChild(handle);
   card.appendChild(textEl);
   card.appendChild(actions);
-
   container.appendChild(card);
-
   updateDragHandles();
 }
 
-function showInputRow() {
+function hideAddRowButtons() {
   addBtn.style.display = 'none';
   exportBtn.style.display = 'none';
   importBtn.style.display = 'none';
+  notifBtn.style.display = 'none';
+}
+function showAddRowButtons() {
+  addBtn.style.display = '';
+  exportBtn.style.display = '';
+  importBtn.style.display = '';
+  notifBtn.style.display = '';
+}
+
+function showInputRow() {
+  hideAddRowButtons();
 
   const row = document.createElement('div');
   row.className = 'goal-input-row';
@@ -863,7 +846,7 @@ function showInputRow() {
 
   const wordCounter = document.createElement('span');
   wordCounter.className = 'word-counter under';
-  wordCounter.textContent = `0/${MIN_LETTERS} `;
+  wordCounter.textContent = `0/${MIN_LETTERS}`;
 
   ta.addEventListener('input', () => {
     ta.style.height = 'auto';
@@ -871,7 +854,9 @@ function showInputRow() {
     counter.textContent = `${ta.value.length}/${MAX}`;
 
     const letters = ta.value.trim().length;
-    wordCounter.textContent = `${letters}/${MIN_LETTERS} `;
+    if (letters < MIN_LETTERS) {
+      wordCounter.textContent = `${letters}/${MIN_LETTERS}`;
+    }
 
     if (letters >= MIN_LETTERS) {
       wordCounter.classList.remove('under');
@@ -887,29 +872,17 @@ function showInputRow() {
   function pinGoal() {
     const text = ta.value.trim();
     if (text.length < MIN_LETTERS) return;
-    if (!text) {
-      row.remove();
-      addBtn.style.display = '';
-      return;
-    }
+    if (!text) { row.remove(); showAddRowButtons(); return; }
     const id = Date.now().toString();
     const goals = loadGoals();
     goals.push({ id, text });
     saveGoals(goals);
     row.remove();
-    addBtn.style.display = '';
     renderGoal(text, id);
-    addBtn.style.display = '';
-exportBtn.style.display = '';
-importBtn.style.display = '';
+    showAddRowButtons();
   }
 
-  function cancelGoal() {
-    row.remove();
-addBtn.style.display = '';
-exportBtn.style.display = '';
-importBtn.style.display = '';
-  }
+  function cancelGoal() { row.remove(); showAddRowButtons(); }
 
   pinBtn.addEventListener('click', pinGoal);
   cancelBtn.addEventListener('click', cancelGoal);
@@ -924,7 +897,6 @@ importBtn.style.display = '';
   actionsEl.appendChild(cancelBtn);
   row.appendChild(ta);
   row.appendChild(actionsEl);
-
   container.insertBefore(row, container.firstChild);
   ta.focus();
 }
@@ -933,38 +905,40 @@ addBtn.addEventListener('click', showInputRow);
 loadGoals().forEach(g => renderGoal(g.text, g.id));
 
 function launchConfetti() {
-  const defaults = {
-    particleCount: 130,
-    spread: 120,
-    colors: ['#e2b714', '#0096FF', '#FF69B4']
-  };
-
-  confetti({
-    ...defaults,
-    angle: 60,
-    origin: { x: 0, y: 1 }
-  });
-
-  confetti({
-    ...defaults,
-    angle: 120,
-    origin: { x: 1, y: 1 }
-  });
+  const defaults = { particleCount: 130, spread: 120, colors: ['#e2b714', '#0096FF', '#FF69B4'] };
+  confetti({ ...defaults, angle: 60, origin: { x: 0, y: 1 } });
+  confetti({ ...defaults, angle: 120, origin: { x: 1, y: 1 } });
 }
 
 function showEditRow(card, id, currentText) {
   const editRow = document.createElement('div');
   editRow.className = 'goal-edit-row';
+
   const ta = document.createElement('textarea');
   ta.value = currentText;
+  ta.maxLength = MAX;
+
   const actionsEl = document.createElement('div');
   actionsEl.className = 'input-actions';
+
   const saveBtn = document.createElement('button');
   saveBtn.className = 'pin-btn';
   saveBtn.textContent = 'Save';
+
   const cancelBtn = document.createElement('button');
   cancelBtn.className = 'cancel-btn';
   cancelBtn.textContent = 'Cancel';
+
+  const counter = document.createElement('span');
+  counter.className = 'char-counter';
+  counter.textContent = `${currentText.length}/${MAX}`;
+
+  ta.addEventListener('input', () => {
+    counter.textContent = `${ta.value.length}/${MAX}`;
+    ta.style.height = 'auto';
+    ta.style.height = ta.scrollHeight + 'px';
+  });
+
   function saveEdit() {
     const newText = ta.value.trim();
     if (newText.length < MIN_LETTERS) return;
@@ -976,12 +950,15 @@ function showEditRow(card, id, currentText) {
     card.style.display = '';
   }
   function cancelEdit() { editRow.remove(); card.style.display = ''; }
+
   saveBtn.addEventListener('click', saveEdit);
   cancelBtn.addEventListener('click', cancelEdit);
   ta.addEventListener('keydown', e => {
     if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); saveEdit(); }
     if (e.key === 'Escape') cancelEdit();
   });
+
+  actionsEl.appendChild(counter);
   actionsEl.appendChild(saveBtn);
   actionsEl.appendChild(cancelBtn);
   editRow.appendChild(ta);
@@ -989,6 +966,7 @@ function showEditRow(card, id, currentText) {
   card.style.display = 'none';
   card.after(editRow);
   ta.focus();
+  setTimeout(() => { ta.style.height = 'auto'; ta.style.height = ta.scrollHeight + 'px'; }, 0);
   ta.setSelectionRange(ta.value.length, ta.value.length);
 }
 
@@ -997,44 +975,27 @@ document.getElementById('exportBtn').addEventListener('click', () => {
   const blob = new Blob([JSON.stringify(goals, null, 2)], { type: 'application/json' });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
-  a.href = url;
-  a.download = 'goals.json';
-  a.click();
+  a.href = url; a.download = 'goals.json'; a.click();
   URL.revokeObjectURL(url);
 });
 
 const importFileInput = document.getElementById('importFileInput');
-
-document.getElementById('importBtn').addEventListener('click', () => {
-  importFileInput.value = '';
-  importFileInput.click();
-});
+document.getElementById('importBtn').addEventListener('click', () => { importFileInput.value = ''; importFileInput.click(); });
 
 importFileInput.addEventListener('change', () => {
   const file = importFileInput.files[0];
   if (!file) return;
-
   const reader = new FileReader();
   reader.onload = (e) => {
     let imported;
-    try {
-      imported = JSON.parse(e.target.result);
-    } catch {
-      alert('Invalid JSON file.');
-      return;
-    }
-
+    try { imported = JSON.parse(e.target.result); }
+    catch { alert('Invalid JSON file.'); return; }
     if (!Array.isArray(imported) || imported.some(g => typeof g.text !== 'string')) {
-      alert('This doesn\'t look like a valid goals.json file.');
-      return;
+      alert("This doesn't look like a valid goals.json file."); return;
     }
-
     const existing = loadGoals();
-    if (existing.length > 0) {
-      showImportConfirmModal(imported);
-    } else {
-      doImport(imported);
-    }
+    if (existing.length > 0) showImportConfirmModal(imported);
+    else doImport(imported);
   };
   reader.readAsText(file);
 });
@@ -1042,53 +1003,142 @@ importFileInput.addEventListener('change', () => {
 function doImport(goals) {
   const normalised = goals.map(g => ({
     id: g.id || Date.now().toString() + Math.random(),
-    text: g.text
+    text: g.text.slice(0, MAX)
   }));
   saveGoals(normalised);
-
   getCards().forEach(c => c.remove());
-
   normalised.forEach(g => renderGoal(g.text, g.id));
 }
 
 function showImportConfirmModal(pendingGoals) {
   const overlay = document.createElement('div');
   overlay.className = 'modal-overlay';
-
   const box = document.createElement('div');
   box.className = 'modal-box';
-
   const p = document.createElement('p');
   p.innerHTML = 'You already have goals, importing these goals will <span class="override-word">override</span> the existing goals. Are you sure?';
-
   const actions = document.createElement('div');
   actions.className = 'modal-actions';
-
   const noBtn = document.createElement('button');
-  noBtn.className = 'modal-no-btn';
-  noBtn.textContent = 'No!';
-
+  noBtn.className = 'modal-no-btn'; noBtn.textContent = 'No!';
   const yesBtn = document.createElement('button');
-  yesBtn.className = 'modal-yes-btn';
-  yesBtn.textContent = 'Yes!';
-
+  yesBtn.className = 'modal-yes-btn'; yesBtn.textContent = 'Yes!';
   noBtn.addEventListener('click', () => overlay.remove());
-  yesBtn.addEventListener('click', () => {
-    overlay.remove();
-    doImport(pendingGoals);
-  });
-
-  overlay.addEventListener('click', (e) => {
-    if (e.target === overlay) overlay.remove();
-  });
-
-  actions.appendChild(noBtn);
-  actions.appendChild(yesBtn);
-  box.appendChild(p);
-  box.appendChild(actions);
+  yesBtn.addEventListener('click', () => { overlay.remove(); doImport(pendingGoals); });
+  overlay.addEventListener('click', e => { if (e.target === overlay) overlay.remove(); });
+  actions.appendChild(noBtn); actions.appendChild(yesBtn);
+  box.appendChild(p); box.appendChild(actions);
   overlay.appendChild(box);
   document.body.appendChild(overlay);
 }
+
+let notifBtnLastClick = 0;
+
+function updateNotifBtnState() {
+  const schedule = getNotifSchedule();
+  const granted = localStorage.getItem(NOTIF_GRANTED) === 'true';
+  if (granted && schedule && schedule.type !== 'never') {
+    notifBtn.classList.add('active');
+  } else {
+    notifBtn.classList.remove('active');
+  }
+}
+
+function getNotifSchedule() {
+  try { return JSON.parse(localStorage.getItem(NOTIF_KEY)) || null; }
+  catch { return null; }
+}
+
+async function requestNotifPermission() {
+  if (!('Notification' in window)) return false;
+  if (Notification.permission === 'granted') return true;
+  if (Notification.permission === 'denied') return false;
+  const result = await Notification.requestPermission();
+  return result === 'granted';
+}
+
+function pickRandomGoal() {
+  const goals = loadGoals();
+  if (!goals.length) return null;
+  return goals[Math.floor(Math.random() * goals.length)].text;
+}
+
+function scheduleNextNotification(schedule) {
+  if (!schedule || schedule.type === 'never' || !schedule.ms) return;
+  const next = Date.now() + schedule.ms;
+  localStorage.setItem(NOTIF_NEXT, next.toString());
+}
+
+function checkAndFireNotification() {
+  const granted = localStorage.getItem(NOTIF_GRANTED) === 'true';
+  if (!granted) return;
+  const schedule = getNotifSchedule();
+  if (!schedule || schedule.type === 'never' || !schedule.ms) return;
+  if (Notification.permission !== 'granted') return;
+
+  const nextStr = localStorage.getItem(NOTIF_NEXT);
+  const now = Date.now();
+
+  if (!nextStr) {
+    scheduleNextNotification(schedule);
+    return;
+  }
+
+  const next = parseInt(nextStr, 10);
+  if (now >= next) {
+    const goal = pickRandomGoal();
+    if (goal) {
+      new Notification('Goal Reminder', { body: goal, icon: '/images/mtg.png' });
+    }
+    scheduleNextNotification(schedule);
+  }
+}
+
+notifBtn.addEventListener('click', async () => {
+  const now = Date.now();
+  const timeSinceLast = now - notifBtnLastClick;
+  notifBtnLastClick = now;
+
+  if (timeSinceLast < 1000) {
+    if (typeof window.NotifPopup !== 'undefined') {
+      window.NotifPopup.show((savedSchedule) => {
+        if (savedSchedule.type !== 'never') {
+          requestNotifPermission().then(granted => {
+            if (granted) {
+              localStorage.setItem(NOTIF_GRANTED, 'true');
+              scheduleNextNotification(savedSchedule);
+            }
+            updateNotifBtnState();
+          });
+        } else {
+          updateNotifBtnState();
+        }
+      });
+    }
+    return;
+  }
+
+  const granted = await requestNotifPermission();
+  if (granted) {
+    localStorage.setItem(NOTIF_GRANTED, 'true');
+    const existing = getNotifSchedule();
+    if (!existing || existing.type === 'never') {
+      const defaultSchedule = { type: 'everyday', ms: 86400000 };
+      localStorage.setItem(NOTIF_KEY, JSON.stringify(defaultSchedule));
+      scheduleNextNotification(defaultSchedule);
+    }
+    updateNotifBtnState();
+    const goal = pickRandomGoal();
+    if (goal) {
+      new Notification('Goal Reminder', { body: goal, icon: '/images/mtg.png' });
+    }
+  }
+});
+
+updateNotifBtnState();
+checkAndFireNotification();
+
+setInterval(checkAndFireNotification, 60000);
 </script>
 </body>
 </html>
